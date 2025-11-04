@@ -1,0 +1,257 @@
+================================================================================
+BEE PROTOCOL IMPLEMENTATIONS - QUICK REFERENCE
+================================================================================
+
+PROTOCOL LOCATIONS (All .proto files found):
+┌─────────────────────┬──────────────────────────────────────────────────────┐
+│ Protocol            │ Path                                                 │
+├─────────────────────┼──────────────────────────────────────────────────────┤
+│ Handshake           │ pkg/p2p/libp2p/internal/handshake/pb/                │ (v14.0.0)
+│ Headers             │ pkg/p2p/libp2p/internal/headers/pb/                  │
+│ Hive                │ pkg/hive/pb/                                         │ (v1.1.0)
+│ Pingpong            │ pkg/pingpong/pb/                                     │ (v1.0.0)
+│ Pricing             │ pkg/pricing/pb/                                      │ (v1.0.0)
+│ Pullsync            │ pkg/pullsync/pb/                                     │ (v1.4.0)
+│ Pushsync            │ pkg/pushsync/pb/                                     │ (v1.3.1)
+│ Retrieval           │ pkg/retrieval/pb/                                    │ (v1.4.0)
+│ Pseudosettle        │ pkg/settlement/pseudosettle/pb/                      │ (v1.0.0)
+│ Status              │ pkg/status/internal/pb/                              │ (v1.1.3)
+│ Swap                │ pkg/settlement/swap/swapprotocol/pb/                 │ (v1.0.0)
+└─────────────────────┴──────────────────────────────────────────────────────┘
+
+KEY STATISTICS:
+- Total Protocols: 11
+- Total Proto Files: 12
+- Total Lines in Proto Files: 261
+- Code Generation: protoc-gen-gogo (gogo/protobuf)
+- Proto Syntax: proto3
+- Message Serialization: Delimited format with 128KB max size
+
+================================================================================
+MESSAGE TYPES SUMMARY
+================================================================================
+
+Handshake:    Syn, Ack, SynAck, BzzAddress
+Headers:      Headers, Header
+Hive:         Peers, BzzAddress
+Pingpong:     Ping, Pong
+Pricing:      AnnouncePaymentThreshold
+Pullsync:     Syn, Ack, Get, Chunk, Offer, Want, Delivery
+Pushsync:     Delivery, Receipt
+Retrieval:    Request, Delivery
+Pseudosettle: Payment, PaymentAck
+Status:       Get, Snapshot
+Swap:         EmitCheque, Handshake
+
+================================================================================
+PROTOCOL PATTERNS
+================================================================================
+
+REQUEST/RESPONSE:
+  - Pricing (announce threshold on connect)
+  - Retrieval (Request → Delivery)
+  - Status (Get → Snapshot)
+  - Swap (EmitCheque + Handshake on connect)
+
+BIDIRECTIONAL:
+  - Pingpong (Ping ↔ Pong)
+  - Handshake (Syn/Ack exchange)
+
+STREAMING/MULTI-MESSAGE:
+  - Pullsync (Syn/Ack, Get/Offer, Want/Delivery)
+  - Pushsync (Delivery → Receipt)
+  - Hive (Peers broadcast)
+  - Pseudosettle (Payment → PaymentAck)
+
+HEADER-BASED:
+  - Swap (uses headers for exchange rates)
+  - All protocols (automatic header exchange)
+
+================================================================================
+PROTOCOL LIFECYCLE
+================================================================================
+
+Stream Creation:
+  p2p.Streamer.NewStream(ctx, address, headers, protocol, version, stream)
+
+Handler Signature:
+  func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error
+
+Typical Handler Pattern:
+  1. Create Reader/Writer: w, r := protobuf.NewWriterAndReader(stream)
+  2. Context timeout: ctx, cancel := context.WithTimeout(ctx, timeout)
+  3. Read message: r.ReadMsgWithContext(ctx, &msg)
+  4. Process message
+  5. Write response: w.WriteMsgWithContext(ctx, &response)
+  6. Close stream: stream.FullClose() on success, stream.Reset() on error
+
+Lifecycle Callbacks:
+  - ConnectIn/Out: Called on peer connection (once per peer)
+  - DisconnectIn/Out: Called on peer disconnect
+
+================================================================================
+SERIALIZATION UTILITIES
+================================================================================
+
+Path: pkg/p2p/protobuf/protobuf.go
+
+Core Functions:
+  NewReader(r io.Reader) Reader
+  NewWriter(w io.Writer) Writer
+  NewWriterAndReader(s p2p.Stream) (Writer, Reader)
+  ReadMessages(r io.Reader, newMessage func() Message) ([]Message, error)
+
+Reader/Writer Methods:
+  reader.ReadMsgWithContext(ctx, msg proto.Message) error
+  writer.WriteMsgWithContext(ctx, msg proto.Message) error
+
+Usage:
+  var msg pb.MessageType
+  err := reader.ReadMsgWithContext(ctx, &msg)
+  err := writer.WriteMsgWithContext(ctx, &msg)
+
+================================================================================
+ERROR HANDLING PATTERNS
+================================================================================
+
+Standard P2P Errors (pkg/p2p/error.go):
+  ErrPeerNotFound
+  ErrAlreadyConnected
+  ErrDialLightNode
+  ErrPeerBlocklisted
+
+Special Error Wrappers:
+  DisconnectError (p2p.NewDisconnectError): Disconnect peer
+  BlockPeerError (p2p.NewBlockPeerError): Disconnect + blocklist
+  IncompatibleStreamError: Stream version mismatch
+  ConnectionBackoffError: Exponential backoff
+  ChunkDeliveryError: Chunk delivery failure
+
+Protocol-Specific Errors (defined in each protocol package):
+  Handshake: ErrNetworkIDIncompatible, ErrInvalidAck, ErrWelcomeMessageLength
+  Pricing: ErrThresholdTooLow
+  Pushsync: ErrNoPush, ErrOutOfDepthStoring, ErrWarmup, ErrShallowReceipt
+  Hive: ErrRateLimitExceeded
+  Pseudosettle: ErrSettlementTooSoon, ErrTimeOutOfSync*
+
+Handler Error Convention:
+  defer func() {
+      if err != nil {
+          _ = stream.Reset()      // Abort on error
+      } else {
+          _ = stream.FullClose()  // Graceful close on success
+      }
+  }()
+
+================================================================================
+HEADERS EXCHANGE
+================================================================================
+
+Process (Automatic in AddProtocol):
+  1. Initiator sends headers
+  2. Responder receives headers via stream.Headers()
+  3. Responder optionally modifies via Headler function
+  4. Responder sends response headers via stream.ResponseHeaders()
+
+Header Type:
+  type Headers map[string][]byte
+
+Headler Signature:
+  type HeadlerFunc func(Headers, swarm.Address) Headers
+
+Usage Example (Swap Protocol):
+  func (s *Service) headler(headers p2p.Headers, peer swarm.Address) p2p.Headers {
+      rate, deduction, _ := s.priceOracle.CurrentRates()
+      return swap.SettlementResponseHeaders(rate, deduction)
+  }
+
+================================================================================
+TESTING PATTERNS
+================================================================================
+
+Using streamtest (pkg/p2p/streamtest/):
+  recorder := streamtest.New(
+      streamtest.WithProtocols(service.Protocol()),
+      streamtest.WithBaseAddr(baseAddr),
+  )
+
+  // Use recorder as streamer
+  client := protocolService.New(recorder, logger, ...)
+
+  // Perform operations
+  rtt, err := client.Operation(ctx)
+
+  // Check recorded messages
+  records, _ := recorder.Records(addr, "protocol", "1.0.0", "stream")
+  record := records[0]
+  messages, _ := protobuf.ReadMessages(
+      bytes.NewReader(record.In()),
+      func() protobuf.Message { return new(pb.MessageType) },
+  )
+
+================================================================================
+CURRENT STATE FOR SWIP-27
+================================================================================
+
+What's Already Strongly Typed:
+  ✓ All messages use protocol buffers (gogo)
+  ✓ Type-safe message handling via generated code
+  ✓ Proper serialization/deserialization
+  ✓ Message validation via protobuf
+
+Limitations That SWIP-27 Should Address:
+  ✗ Raw bytes for addresses, signatures, data
+  ✗ Error strings in messages (Retrieval.Delivery.Err)
+  ✗ Limited type info in headers (map[string][]byte)
+  ✗ Mixed concerns in some messages (e.g., Delivery + error)
+
+Recommendations:
+  - Create common type definitions (Address, Signature, etc.)
+  - Define error response messages instead of error strings
+  - Separate request/response concerns in proto designs
+  - Add field validation and constraints where needed
+  - Improve reusability across protocols
+
+================================================================================
+KEY FILES FOR IMPLEMENTATION
+================================================================================
+
+Core P2P Framework:
+  /home/user/bee/pkg/p2p/p2p.go                    - Interface definitions
+  /home/user/bee/pkg/p2p/error.go                  - Error types
+  /home/user/bee/pkg/p2p/protobuf/protobuf.go     - Serialization utilities
+  /home/user/bee/pkg/p2p/libp2p/libp2p.go         - Protocol registration
+  /home/user/bee/pkg/p2p/libp2p/stream.go         - Stream implementation
+  /home/user/bee/pkg/p2p/libp2p/headers.go        - Header exchange
+
+Protocol Registration:
+  AddProtocol(spec p2p.ProtocolSpec) error
+  - Registers stream handlers with libp2p
+  - Sets up lifecycle callbacks
+  - Handles header exchange
+  - Implements error handling
+
+Each Protocol Includes:
+  {protocol}.go            - Service implementation
+  pb/{protocol}.proto      - Message definitions
+  pb/{protocol}.pb.go      - Generated code (auto)
+  metrics.go              - Prometheus metrics
+  {protocol}_test.go      - Tests
+
+================================================================================
+ANALYSIS DOCUMENT LOCATION
+================================================================================
+
+Full comprehensive analysis available at:
+  /home/user/bee/PROTOCOL_ANALYSIS.md
+
+This document includes:
+  - Detailed descriptions of each protocol
+  - Message type specifications
+  - Key features and methods
+  - Error handling patterns
+  - Code examples
+  - Testing patterns
+  - SWIP-27 implications
+
+================================================================================
