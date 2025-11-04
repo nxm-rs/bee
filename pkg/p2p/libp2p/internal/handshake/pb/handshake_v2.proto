@@ -1,0 +1,53 @@
+// Copyright 2025 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// SWIP-27: Strictly Typed Wire-Level Messages
+// Version 2.0.0 of the handshake protocol
+
+syntax = "proto3";
+
+package swarm.handshake;
+
+import "pkg/p2p/protobuf/common/common.proto";
+
+option go_package = "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake/pb";
+
+// HandshakeMessageType defines the type of handshake message
+enum HandshakeMessageType {
+  SYN = 0;      // Initial handshake message
+  ACK = 1;      // Acknowledgment message
+  SYN_ACK = 2;  // Combined SYN+ACK message
+}
+
+// HandshakeMessage is the wrapper message for the stateful handshake protocol
+// This implements the stateful protocol pattern with explicit message types
+message HandshakeMessage {
+  HandshakeMessageType type = 1;
+
+  oneof message {
+    Syn syn = 2;
+    Ack ack = 3;
+    SynAck syn_ack = 4;
+  }
+}
+
+// Syn is initiated by a peer to start the handshake
+message Syn {
+  bytes observed_underlay = 1;  // The observed underlay address of the peer
+}
+
+// Ack is the response message containing peer information
+message Ack {
+  swarm.common.BzzAddress address = 1;  // Swarm address of the responding peer
+  uint64 network_id = 2;                // Network ID for peer validation
+  bool full_node = 3;                   // Whether this is a full node
+  string welcome_message = 99;          // Optional welcome message (max 140 chars)
+}
+
+// SynAck is a combined message containing both Syn and Ack components
+// This allows for a more efficient handshake in some scenarios
+message SynAck {
+  Syn syn = 1;   // SYN component
+  Ack ack = 2;   // ACK component
+}

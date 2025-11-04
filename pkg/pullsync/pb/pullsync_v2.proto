@@ -1,0 +1,91 @@
+// Copyright 2025 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// SWIP-27: Strictly Typed Wire-Level Messages
+// Version 2.0.0 of the pullsync protocol
+
+syntax = "proto3";
+
+package swarm.pullsync;
+
+import "pkg/p2p/protobuf/common/common.proto";
+
+option go_package = "github.com/ethersphere/bee/v2/pkg/pullsync/pb";
+
+// PullSyncMessageType defines the type of pullsync message
+enum PullSyncMessageType {
+  GET = 0;       // Request chunks from a bin
+  OFFER = 1;     // Offer available chunks
+  WANT = 2;      // Indicate which chunks are wanted
+  DELIVERY = 3;  // Deliver the actual chunk data
+}
+
+// PullSyncMessage is the wrapper message for the stateful pullsync protocol
+// This implements the stateful protocol pattern with explicit message types
+message PullSyncMessage {
+  PullSyncMessageType type = 1;
+
+  oneof message {
+    Get get = 2;
+    Offer offer = 3;
+    Want want = 4;
+    Delivery delivery = 5;
+  }
+}
+
+// Get requests chunks from a specific bin starting at a position
+message Get {
+  int32 bin = 1;      // The bin to retrieve chunks from
+  uint64 start = 2;   // Starting position identifier
+}
+
+// ChunkReference provides metadata about a chunk without the full data
+message ChunkReference {
+  bytes address = 1;    // Chunk address
+  bytes batch_id = 2;   // Postage batch ID
+  bytes stamp_hash = 3; // Stamp hash
+}
+
+// Offer presents available chunks to a peer
+message Offer {
+  uint64 topmost = 1;                      // Topmost chunk position in this range
+  repeated ChunkReference chunks = 2;      // List of available chunk references
+}
+
+// Want indicates which chunks are desired using a bit vector
+message Want {
+  bytes bit_vector = 1;  // Bit vector indicating wanted chunks (1 = want, 0 = don't want)
+}
+
+// Delivery transmits the full chunk data
+message Delivery {
+  swarm.common.Chunk chunk = 1;  // The complete chunk with all components
+  bytes stamp = 2;               // Serialized postage stamp
+}
+
+// CursorsMessageType defines the type of cursors subprotocol message
+enum CursorsMessageType {
+  SYN = 0;  // Initiate synchronization
+  ACK = 1;  // Respond with cursor data
+}
+
+// CursorsMessage is the wrapper message for the cursors subprotocol
+// This subprotocol handles synchronization state exchange
+message CursorsMessage {
+  CursorsMessageType type = 1;
+
+  oneof message {
+    Syn syn = 2;
+    Ack ack = 3;
+  }
+}
+
+// Syn initiates cursor synchronization (empty message)
+message Syn {}
+
+// Ack responds with cursor data for all bins
+message Ack {
+  repeated uint64 cursors = 1;  // List of bin cursors (one per bin)
+  uint64 epoch = 2;             // Current epoch number for tracking sync state
+}

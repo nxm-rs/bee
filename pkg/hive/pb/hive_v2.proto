@@ -1,0 +1,20 @@
+// Copyright 2025 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// SWIP-27: Strictly Typed Wire-Level Messages
+// Version 2.0.0 of the hive protocol
+
+syntax = "proto3";
+
+package swarm.hive;
+
+import "pkg/p2p/protobuf/common/common.proto";
+
+option go_package = "github.com/ethersphere/bee/v2/pkg/hive/pb";
+
+// Peers message contains a list of discovered peers
+// This is an infallible message used for peer discovery
+message Peers {
+  repeated swarm.common.BzzAddress peers = 1;  // List of peer addresses
+}

@@ -1,0 +1,24 @@
+// Copyright 2025 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// SWIP-27: Strictly Typed Wire-Level Messages
+// Version 2.0.0 of the pingpong protocol
+
+syntax = "proto3";
+
+package swarm.pingpong;
+
+option go_package = "github.com/ethersphere/bee/v2/pkg/pingpong/pb";
+
+// Ping message sent to test connectivity
+// This is an infallible request that cannot fail to be constructed
+message Ping {
+  string greeting = 1;  // Optional greeting text
+}
+
+// Pong message sent in response to a Ping
+// This is an infallible response as PingPong is a basic connectivity test
+message Pong {
+  string response = 1;  // Response text
+}

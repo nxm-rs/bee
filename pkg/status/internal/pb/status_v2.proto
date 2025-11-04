@@ -1,0 +1,34 @@
+// Copyright 2025 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// SWIP-27: Strictly Typed Wire-Level Messages
+// Version 2.0.0 of the status protocol
+
+syntax = "proto3";
+
+package swarm.status;
+
+option go_package = "github.com/ethersphere/bee/v2/pkg/status/internal/pb";
+
+// Get message indicates interest in receiving a node Snapshot.
+// This is an infallible request with no fields.
+message Get {}
+
+// Snapshot message is a response to the Get message and contains
+// the appropriate values that are a snapshot of the current state
+// of the running node. This is an infallible response.
+message Snapshot {
+  uint64 reserve_size = 1;             // Total size of reserve storage
+  double pullsync_rate = 2;            // Current pullsync synchronization rate
+  uint32 storage_radius = 3;           // Current storage radius
+  uint64 connected_peers = 4;          // Number of connected peers
+  uint64 neighborhood_size = 5;        // Size of the node's neighborhood
+  string bee_mode = 6;                 // Node mode (full/light/ultra-light)
+  uint64 batch_commitment = 7;         // Current postage batch commitment
+  bool is_reachable = 8;               // Whether node is reachable from outside
+  uint64 reserve_size_within_radius = 9;  // Reserve size within current radius
+  uint64 last_synced_block = 10;       // Last synced blockchain block number
+  uint32 committed_depth = 11;         // Committed depth in the reserve
+  map<string, string> metrics = 12;    // Additional metrics
+}

@@ -1,0 +1,134 @@
+// Copyright 2025 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package swarm.client;
+
+import "pkg/p2p/protobuf/common/common.proto";
+
+option go_package = "github.com/ethersphere/bee/v2/pkg/client/pb";
+
+// ClientMessageType defines the type of client protocol message
+enum ClientMessageType {
+  PUT = 0;           // Write chunk to swarm (replaces pushsync)
+  GET = 1;           // Read chunk from swarm (replaces retrieval)
+  PUT_RESPONSE = 2;  // Response to PUT request
+  GET_RESPONSE = 3;  // Response to GET request
+  PRICING = 4;       // Payment threshold announcement (replaces pricing protocol)
+  SETTLEMENT = 5;    // Accounting settlement operations (replaces pseudosettle + swap)
+}
+
+// ClientMessage is the top-level message wrapper for the unified client protocol
+// This consolidates pushsync, retrieval, pricing, pseudosettle, and swap into
+// a single protocol stream per peer, dramatically reducing stream overhead and
+// mutex contention in accounting operations.
+message ClientMessage {
+  ClientMessageType type = 1;
+
+  oneof message {
+    Put put = 2;
+    Get get = 3;
+    PutResponse put_response = 4;
+    GetResponse get_response = 5;
+    Pricing pricing = 6;
+    Settlement settlement = 7;
+  }
+}
+
+// Put writes a chunk to the swarm (replaces pushsync.Delivery)
+// This is a request message that expects a PutResponse
+message Put {
+  swarm.common.Chunk chunk = 1;
+  bytes stamp = 2;  // Serialized postage stamp
+}
+
+// PutResponse is the response to a Put request (replaces pushsync.Receipt)
+// Uses oneof to provide either success or error result
+message PutResponse {
+  bytes chunk_addr = 1;  // Echo back the chunk address
+
+  oneof result {
+    PutSuccess success = 2;
+    swarm.common.Error error = 3;
+  }
+}
+
+// PutSuccess contains the receipt for successful chunk storage
+message PutSuccess {
+  bytes signature = 1;      // Storage receipt signature
+  bytes nonce = 2;          // Nonce used for signature
+  uint32 storage_radius = 3; // Current storage radius of the storing node
+}
+
+// Get requests a chunk from the swarm (replaces retrieval.Request)
+// This is a request message that expects a GetResponse
+message Get {
+  bytes chunk_addr = 1;  // Address of chunk to retrieve
+}
+
+// GetResponse is the response to a Get request (replaces retrieval.Delivery)
+// Uses oneof to provide either the chunk or an error
+message GetResponse {
+  bytes chunk_addr = 1;  // Echo back the chunk address
+
+  oneof result {
+    swarm.common.Chunk chunk = 2;  // The retrieved chunk with postage stamp
+    swarm.common.Error error = 3;   // Error if chunk could not be retrieved
+  }
+}
+
+// Pricing announces the payment threshold (replaces pricing.AnnouncePaymentThreshold)
+// This is typically sent when opening a client connection to inform the peer
+// of the payment threshold before any data operations occur.
+// This is an infallible one-way message.
+message Pricing {
+  bytes payment_threshold = 1;  // Payment threshold as big.Int (can be up to u256)
+}
+
+// SettlementMessageType defines the type of settlement operation
+enum SettlementMessageType {
+  PAYMENT = 0;      // Pseudosettle payment (lightweight settlement)
+  PAYMENT_ACK = 1;  // Pseudosettle acknowledgment
+  EMIT_CHEQUE = 2;  // Swap cheque emission (on-chain settlement)
+  HANDSHAKE = 3;    // Swap beneficiary handshake
+}
+
+// Settlement handles all accounting operations
+// This consolidates pseudosettle and swap protocols into settlement sub-messages
+message Settlement {
+  SettlementMessageType type = 1;
+
+  oneof settlement_message {
+    Payment payment = 2;
+    PaymentAck payment_ack = 3;
+    EmitCheque emit_cheque = 4;
+    Handshake handshake = 5;
+  }
+}
+
+// Payment represents a pseudosettle payment (lightweight settlement)
+// This is used for off-chain accounting between peers
+message Payment {
+  bytes amount = 1;  // Payment amount as big.Int encoded as bytes
+}
+
+// PaymentAck acknowledges a pseudosettle payment
+message PaymentAck {
+  bytes amount = 1;      // Acknowledged amount as big.Int
+  int64 timestamp = 2;   // Timestamp of the acknowledgment
+}
+
+// EmitCheque represents a swap cheque emission (on-chain settlement)
+// This is used when off-chain accounting is insufficient and on-chain
+// settlement is required
+message EmitCheque {
+  bytes cheque = 1;  // Serialized cheque data
+}
+
+// Handshake exchanges swap beneficiary information
+// This establishes the beneficiary address for on-chain settlements
+message Handshake {
+  bytes beneficiary = 1;  // Ethereum address of the beneficiary
+}

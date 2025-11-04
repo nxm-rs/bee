@@ -1,0 +1,75 @@
+// Copyright 2025 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package swarm.common;
+
+option go_package = "github.com/ethersphere/bee/v2/pkg/p2p/protobuf/common/pb";
+
+// ChunkType identifies the type of chunk
+enum ChunkType {
+  CAC = 0; // Content-addressed chunk
+  SOC = 1; // Single-owner chunk
+}
+
+// Chunk represents a complete chunk with all its components
+// This unifies chunk representation across all protocols
+message Chunk {
+  ChunkType chunk_type = 1;
+  uint32 version = 2;
+  bytes header = 3;    // For SOC: owner + id + signature
+  bytes payload = 4;   // Actual chunk data
+  bytes proof = 5;     // Optional proof data
+}
+
+// PostageStamp represents a postage batch stamp
+message PostageStamp {
+  bytes batch_id = 1;
+  uint32 index = 2;
+  uint64 timestamp = 3;
+  bytes signature = 4;
+}
+
+// BzzAddress represents a Swarm node address with overlay and underlay
+message BzzAddress {
+  bytes underlay = 1;   // Physical network address (multiaddr)
+  bytes signature = 2;  // Signature over address components
+  bytes nonce = 3;      // Nonce for address generation
+  bytes overlay = 4;    // Swarm overlay address
+}
+
+// ErrorCode defines standard error codes for protocol operations
+enum ErrorCode {
+  // General errors (0-99)
+  UNKNOWN = 0;
+  INVALID_CHUNK = 1;
+  NOT_FOUND = 2;
+  RATE_LIMIT = 3;
+  INVALID_STAMP = 4;
+
+  // Storage errors (100-199)
+  OUT_OF_RADIUS = 100;
+  STORAGE_FULL = 101;
+  SHALLOW_RECEIPT = 102;
+
+  // Accounting errors (200-299)
+  OVERDRAFT = 200;
+  INSUFFICIENT_BALANCE = 201;
+  INVALID_CHEQUE = 202;
+  INVALID_BENEFICIARY = 203;
+  PAYMENT_THRESHOLD_EXCEEDED = 204;
+
+  // Network errors (300-399)
+  PEER_UNAVAILABLE = 300;
+  TIMEOUT = 301;
+  PROTOCOL_MISMATCH = 302;
+}
+
+// Error provides structured error information
+message Error {
+  ErrorCode code = 1;     // Machine-readable error code
+  string message = 2;     // Human-readable error message
+  bytes details = 3;      // Optional error-specific details (e.g., serialized data)
+}

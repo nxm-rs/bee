@@ -1,0 +1,27 @@
+// Copyright 2025 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// SWIP-27: Strictly Typed Wire-Level Messages
+// Version 2.0.0 of the headers protocol
+
+syntax = "proto3";
+
+package swarm.headers;
+
+option go_package = "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/headers/pb";
+
+// Headers contains a collection of protocol headers
+// This implements the strongly typed messages principle by using
+// explicit message types rather than generic byte arrays.
+// This is also the message that is sent in response to a Headers request
+// and is infallible.
+message Headers {
+  repeated Header headers = 1;  // List of header entries
+}
+
+// Header represents a single key-value header
+message Header {
+  string key = 1;     // The header key
+  bytes value = 2;    // The header value as bytes
+}
